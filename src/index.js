@@ -9,6 +9,10 @@ const input = Forge.Input.Init(config);
 
 renderContext.drawArray = Forge.Input.GetDrawArray();
 
+// setInterval(() => {
+//   Forge.Input.PrintDrawArray(renderContext.drawArray);
+// }, 1000);
+
 const square = Forge.Geometry.Square(config.core.grid.cellRatio);
 Forge.Renderer.AddVertices(renderContext, square);
 

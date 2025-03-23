@@ -112,9 +112,9 @@ function updateMousePos(event) {
 function updateOnResize() {
   state.window.gridWidth = Math.floor(window.innerWidth / state.cellSize);
   state.window.gridHeight = Math.floor(window.innerHeight / state.cellSize);
-  state.drawArray = new Uint32Array(
+  state.drawArray = new Float32Array(
     state.window.gridWidth * state.window.gridHeight
-  );
+  ); // This breaks input on resize.
 }
 
 export function GetDrawArray() {

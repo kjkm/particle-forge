@@ -2,7 +2,7 @@ export default class Grid {
     constructor(width, height) {
         this.width = width;
         this.height = height;
-        this.cells = new Uint32Array(width * height);
+        this.cells = new Float32Array(width * height);
     }
 
     Get(x, y) {

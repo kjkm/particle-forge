@@ -207,6 +207,7 @@ export function CreateUniformBuffer(renderContext, width, height) {
 }
 
 export function createStorageBuffer(renderContext, stateArray, bufferLabel) {
+  console.log("stateArray type:", stateArray.constructor.name);
   const stateStorage = renderContext.gpu.device.createBuffer({
     label: bufferLabel || "State Storage",
     size: stateArray.byteLength,
