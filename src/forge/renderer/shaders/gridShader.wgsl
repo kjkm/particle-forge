@@ -20,8 +20,8 @@ fn vertexMain(input: VertexInput) ->
     var state = f32(cellState[input.instance]);
     let userInput = f32(inputArray[input.instance]);
 
-    let combined = max(state, userInput);
-    state = combined;
+    // let combined = max(state, userInput);
+    // state = combined;
 
     let cellOffset = cell / grid * 2;
     let gridPos = (input.pos * state + 1) / grid - 1 + cellOffset;

@@ -1,6 +1,7 @@
 import core from "./core.config.json" assert { type: "json" };
 import renderer from "./renderer.config.json" assert { type: "json" };
 import simulation from "./simulation.config.json" assert { type: "json" };
+import input from "./input.config.json" assert { type: "json" };
 
 function deepFreeze(obj) {
   if (obj && typeof obj === "object") {
@@ -16,7 +17,8 @@ function Init() {
   deepFreeze(core);
   deepFreeze(renderer);
   deepFreeze(simulation);
-  return { core, renderer, simulation };
+  deepFreeze(input);
+  return { core, renderer, simulation, input };
 }
 
 export { Init };

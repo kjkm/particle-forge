@@ -1,6 +1,6 @@
 {
     "grid": {
-        "cellSize": 25,
+        "cellSize": 1,
         "borderSize": 0
     }
 }

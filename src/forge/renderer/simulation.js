@@ -6,14 +6,14 @@ export function AddSimulationPipeline(renderContext, config) {
     config.simulation.workgroupSize
   );
 
-  const simulationShaderModule = renderContext.device.createShaderModule({
+  const simulationShaderModule = renderContext.gpu.device.createShaderModule({
     label: "Simulation Shader Module",
     code: processedShaderCode,
   });
 
-  const simulationPipeline = renderContext.device.createComputePipeline({
+  const simulationPipeline = renderContext.gpu.device.createComputePipeline({
     label: "Simulation Pipeline",
-    layout: renderContext.pipelineLayout,
+    layout: renderContext.layouts.pipelineLayout,
     compute: {
         module: simulationShaderModule,
         entryPoint: "computeMain",

@@ -1,179 +1,85 @@
 import gridShaderCode from "./shaders/gridShader.wgsl?raw";
+import Grid from "./grid";
+import { Input } from "../forge.js";
 import { AddSimulationPipeline } from "./simulation";
 
-export async function Init(config) {
+
+/* ***************************************************************************************
+ * FETCH WEBGPU
+ * ***************************************************************************************/
+async function fetchWebGPU(renderContext) {
+  const gpu = {};
+
   if (!navigator.gpu) {
     throw new Error("WebGPU is not supported");
   }
 
-  const adapter = await navigator.gpu.requestAdapter();
-  if (!adapter) {
+  gpu.adapter = await navigator.gpu.requestAdapter();
+  if (!gpu.adapter) {
     throw new Error("No adapter found");
   }
 
-  const device = await adapter.requestDevice();
+  gpu.device = await gpu.adapter.requestDevice();
+  
+  renderContext.gpu = gpu;
+  return renderContext;
+}
 
-  // Configure the canvas
-  const canvas = document.querySelector("canvas");
-  const context = canvas.getContext("webgpu");
-  const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
-  context.configure({
-    device: device,
-    format: canvasFormat,
+/* ***************************************************************************************
+ * FETCH AND CONFIG CANVAS
+ * ***************************************************************************************/
+function fetchCanvas(renderContext) {
+  const canvas = {};
+  renderContext.canvas = canvas;
+  canvas.canvas = document.querySelector("canvas");
+  canvas.context = canvas.canvas.getContext("webgpu");
+  canvas.canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+  canvas.context.configure({
+    device: renderContext.gpu.device,
+    format: canvas.canvasFormat,
   });
-
-  // Get window size
-  const rect = canvas.getBoundingClientRect();
-
-  const renderContext = {
-    adapter: adapter,
-    device: device,
-    canvas: canvas,
-    context: context,
-    canvasFormat: canvasFormat,
-    top: rect.top,
-    bottom: rect.bottom,
-    left: rect.left,
-    right: rect.right,
-    width: rect.width,
-    height: rect.height,
-    x: rect.x,
-    y: rect,
-    gridWidth: Math.floor(rect.width / config.core.grid.cellSize),
-    gridHeight: Math.floor(rect.height / config.core.grid.cellSize),
-    tickRate: 60,
-    config: config,
-    renderStep: 0,
-  };
+  
+  updateCanvas(renderContext);
 
   window.addEventListener("resize", () => {
-    const rect = canvas.getBoundingClientRect();
-    renderContext.top = rect.top;
-    renderContext.bottom = rect.bottom;
-    renderContext.left = rect.left;
-    renderContext.right = rect.right;
-    renderContext.width = rect.width;
-    renderContext.height = rect.height;
-    renderContext.gridWidth = Math.floor(rect.width / config.core.grid.cellSize);
-    renderContext.gridHeight = Math.floor(rect.height / config.core.grid.cellSize);
-    renderContext.x = rect.x;
-    renderContext.y = rect.y;
+    updateCanvas(renderContext);
   });
-
-  renderContext.bindGroupLayout = CreateBindGroupLayout(renderContext);
-  renderContext.pipelineLayout = renderContext.device.createPipelineLayout({
-    label: "Cell Pipeline Layout",
-    bindGroupLayouts: [renderContext.bindGroupLayout],
-  });
-
-  renderContext.pipeline = CreatePipeline(renderContext);
-  AddSimulationPipeline(renderContext, config);
 
   return renderContext;
 }
 
-export function SetTickRate(renderContext, tickRate) {
-  renderContext.tickRate = tickRate;
+function updateCanvas(renderContext) {
+  const canvas = renderContext.canvas;
+  canvas.rect = canvas.canvas.getBoundingClientRect();
+  canvas.width = canvas.rect.width;
+  canvas.height = canvas.rect.height;
+  canvas.top = canvas.rect.top;
+  canvas.bottom = canvas.rect.bottom;
+  canvas.left = canvas.rect.left;
+  canvas.right = canvas.rect.right;
+  canvas.x = canvas.rect.x;
+  canvas.y = canvas.rect.y;
+  canvas.gridWidth = Math.floor(canvas.width / renderContext.config.core.grid.cellSize);
+  canvas.gridHeight = Math.floor(canvas.height / renderContext.config.core.grid.cellSize);
+
   return renderContext;
 }
 
-export function CreatePipeline(renderContext) {
-  const vertexBufferLayout = {
-    arrayStride: 2 * 4,
-    attributes: [
-      {
-        shaderLocation: 0,
-        offset: 0,
-        format: "float32x2",
-      },
-    ],
-  };
+/* ***************************************************************************************
+ * FETCH AND CONFIG RENDER LAYOUTS
+ * ***************************************************************************************/
+function fetchRenderLayouts(renderContext) {
+  const renderLayouts = {};
+  renderContext.layouts = renderLayouts;
+  renderLayouts.bindGroupLayout = createBindGroupLayout(renderContext);
+  renderLayouts.pipelineLayout = createPipelineLayout(renderContext);
 
-  const cellShaderModule = renderContext.device.createShaderModule({
-    label: "Shader Module",
-    code: gridShaderCode,
-  });
-
-  console.log(renderContext.bindGroupLayout);
-
-  const pipeline = renderContext.device.createRenderPipeline({
-    label: "Pipeline",
-    layout: renderContext.pipelineLayout,
-    vertex: {
-      module: cellShaderModule,
-      entryPoint: "vertexMain",
-      buffers: [vertexBufferLayout],
-    },
-    fragment: {
-      module: cellShaderModule,
-      entryPoint: "fragmentMain",
-      targets: [
-        {
-          format: renderContext.canvasFormat,
-        },
-      ],
-    },
-  });
-
-  return pipeline;
-}
-
-export function CreateVertexBuffer(renderContext, vertices) {
-  const vertexBuffer = renderContext.device.createBuffer({
-    label: "Cell Vertices",
-    size: vertices.byteLength,
-    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-  });
-  renderContext.device.queue.writeBuffer(vertexBuffer, 0, vertices);
-
-  const vertex = {
-    buffer: vertexBuffer,
-    tris: vertices,
-  };
-
-  return vertex;
-}
-
-export function AddVertices(renderContext, vertices) {
-  const vertexBuffer = CreateVertexBuffer(renderContext, vertices);
-  renderContext.vertices = vertexBuffer;
   return renderContext;
 }
 
-export function CreateGridBuffer(renderContext, width, height) {
-  const uniformArray = new Float32Array([width, height]);
-  const uniformBuffer = renderContext.device.createBuffer({
-    label: "Grid Uniforms",
-    size: uniformArray.byteLength,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  });
-  renderContext.device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
-
-  const grid = {
-    buffer: uniformBuffer,
-  };
-  return grid;
-}
-
-export function CreateStorageBuffer(renderContext, stateArray) {
-  const stateStorage = renderContext.device.createBuffer({
-    label: "Cell State Storage",
-    size: stateArray.byteLength,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-  });
-
-  renderContext.device.queue.writeBuffer(stateStorage, 0, stateArray);
-  
-  const state = {
-    buffer: stateStorage,
-  };
-  
-  return state;
-}
-
-export function CreateBindGroupLayout(renderContext) {
-  const bindGroupLayout = renderContext.device.createBindGroupLayout({
-    label: "Grid Bind Group Layout",
+function createBindGroupLayout(renderContext) {
+  const bindGroupLayout = renderContext.gpu.device.createBindGroupLayout({
+    label: "Bind Group Layout",
     entries: [
       {
         binding: 0,
@@ -201,114 +107,235 @@ export function CreateBindGroupLayout(renderContext) {
   return bindGroupLayout;
 }
 
-export function CreateBindGroup(renderContext, grid, cellInput, drawArray, cellOutput) {
-  const bindGroup = renderContext.device.createBindGroup({
-    label: "Grid Bind Group",
-    layout: renderContext.bindGroupLayout,
-    entries: [
+function createPipelineLayout(renderContext) {
+  const pipelineLayout = renderContext.gpu.device.createPipelineLayout({
+    label: "Pipeline Layout",
+    bindGroupLayouts: [renderContext.layouts.bindGroupLayout],
+  });
+
+  return pipelineLayout;
+}
+
+/* ***************************************************************************************
+ * SET TICK RATE
+ * ***************************************************************************************/
+export function SetTickRate(renderContext, tickRate) {
+  renderContext.tickRate = tickRate;
+  return renderContext;
+}
+
+/* ***************************************************************************************
+ * CREATE PIPELINE
+ * ***************************************************************************************/
+export function CreatePipeline(renderContext) {
+  const vertexBufferLayout = {
+    arrayStride: 2 * 4,
+    attributes: [
       {
-        binding: 0,
-        resource: {
-          buffer: grid.buffer,
-        },
+        shaderLocation: 0,
+        offset: 0,
+        format: "float32x2",
       },
-      {
-        binding: 1,
-        resource: {
-          buffer: cellInput.buffer,
-        },
-      },
-      {
-        binding: 2,
-        resource: {
-          buffer: drawArray.buffer,
-        },
-      },
-      {
-        binding: 3,
-        resource: {
-          buffer: cellOutput.buffer,
-        },
-      }
     ],
+  };
+
+  const cellShaderModule = renderContext.gpu.device.createShaderModule({
+    label: "Shader Module",
+    code: gridShaderCode,
+  });
+
+  const pipeline = renderContext.gpu.device.createRenderPipeline({
+    label: "Pipeline",
+    layout: renderContext.layouts.pipelineLayout,
+    vertex: {
+      module: cellShaderModule,
+      entryPoint: "vertexMain",
+      buffers: [vertexBufferLayout],
+    },
+    fragment: {
+      module: cellShaderModule,
+      entryPoint: "fragmentMain",
+      targets: [
+        {
+          format: renderContext.canvas.canvasFormat,
+        },
+      ],
+    },
+  });
+
+  return pipeline;
+}
+
+/* ***************************************************************************************
+ * CREATE VERTEX BUFFER
+ * ***************************************************************************************/
+export function CreateVertexBuffer(renderContext, vertices) {
+  const vertexBuffer = renderContext.gpu.device.createBuffer({
+    label: "Cell Vertices",
+    size: vertices.byteLength,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+  });
+  renderContext.gpu.device.queue.writeBuffer(vertexBuffer, 0, vertices);
+
+  const vertex = {
+    buffer: vertexBuffer,
+    tris: vertices,
+  };
+
+  return vertex;
+}
+
+/* ***************************************************************************************
+ * ADD VERTICES
+ * ***************************************************************************************/
+export function AddVertices(renderContext, vertices) {
+  const vertexBuffer = CreateVertexBuffer(renderContext, vertices);
+  renderContext.vertices = vertexBuffer;
+  return renderContext;
+}
+
+export function CreateUniformBuffer(renderContext, width, height) {
+  const uniformArray = new Float32Array([width, height]);
+  const uniformBuffer = renderContext.gpu.device.createBuffer({
+    label: "Uniforms",
+    size: uniformArray.byteLength,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  renderContext.gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
+
+  return uniformBuffer;
+}
+
+export function createStorageBuffer(renderContext, stateArray, bufferLabel) {
+  const stateStorage = renderContext.gpu.device.createBuffer({
+    label: bufferLabel || "State Storage",
+    size: stateArray.byteLength,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  renderContext.gpu.device.queue.writeBuffer(stateStorage, 0, stateArray);
+  
+  return stateStorage;
+}
+
+export function CreateBindGroup(renderContext, resources) {
+  const entries = resources.map((buffer, i) => ({
+    binding: i,
+    resource: { buffer },
+  }));
+
+  const bindGroup = renderContext.gpu.device.createBindGroup({
+    label: "Grid Bind Group",
+    layout: renderContext.layouts.bindGroupLayout,
+    entries: entries,
   });
 
   return bindGroup;
 }
 
+/* ***************************************************************************************
+ * INIT RENDERER
+ * ***************************************************************************************/
+export async function Init(config) {
+  const rend = {
+    renderStep: 0
+  };
+  rend.config = config;
+  
+  await fetchWebGPU(rend);
+  fetchCanvas(rend);
+
+  fetchRenderLayouts(rend);
+
+  rend.pipeline = CreatePipeline(rend);
+  AddSimulationPipeline(rend, config);
+
+  // FULL SETUP
+  rend.uniformBuffer = CreateUniformBuffer(rend, rend.canvas.gridWidth, rend.canvas.gridHeight);
+
+  rend.stateGrid = new Grid(rend.canvas.gridWidth, rend.canvas.gridHeight);
+  // rend.stateGrid.Randomize();
+  rend.cellStateArray = rend.stateGrid.GetArray();
+
+  rend.cellStateBuffers = [
+    createStorageBuffer(rend, rend.cellStateArray, "Cell State A"),
+    createStorageBuffer(rend, rend.cellStateArray, "Cell State B")
+  ];
+
+  rend.inputGrid = new Grid(rend.canvas.gridWidth, rend.canvas.gridHeight);
+  if (rend.drawArray) {
+    rend.inputGrid.SetArray(rend.drawArray);
+  }
+
+  rend.inputStateArray = rend.inputGrid.GetArray();
+  rend.inputStateBuffer = createStorageBuffer(rend, rend.inputStateArray, "Input State");
+
+  return rend;
+}
+
+export function PreRender(rend) {
+  const bindGroups = [
+    CreateBindGroup(rend, [rend.uniformBuffer, rend.cellStateBuffers[0], rend.inputStateBuffer, rend.cellStateBuffers[1]]),
+    CreateBindGroup(rend, [rend.uniformBuffer, rend.cellStateBuffers[1], rend.inputStateBuffer, rend.cellStateBuffers[0]])
+  ];
+
+  rend.bindGroups = bindGroups;
+}
+
+/* ***************************************************************************************
+ * RENDERING
+ * ***************************************************************************************/
 export function Render(renderContext, numInstances, bindGroup) {
-  const encoder = renderContext.device.createCommandEncoder();
+  const encoder = renderContext.gpu.device.createCommandEncoder();
+
   // Compute pass
   const computePass = encoder.beginComputePass();
 
   computePass.setPipeline(renderContext.simulationPipeline);
   computePass.setBindGroup(0, renderContext.bindGroups[renderContext.renderStep % 2]);
   const workgroupSize = renderContext.config.simulation.workgroupSize;
-  const workgroupCount = Math.ceil((renderContext.gridWidth * renderContext.gridHeight) / (workgroupSize * workgroupSize));
-  computePass.dispatchWorkgroups(workgroupCount, workgroupCount);
-
+  const workgroupWidth = Math.ceil(renderContext.canvas.gridWidth / workgroupSize);
+  const workgroupHeight = Math.ceil(renderContext.canvas.gridHeight / workgroupSize);
+  computePass.dispatchWorkgroups(workgroupWidth, workgroupHeight);
   computePass.end();
 
   // Render pass
-  const pass = encoder.beginRenderPass({
+  const renderPass = encoder.beginRenderPass({
     colorAttachments: [
       {
-        view: renderContext.context.getCurrentTexture().createView(),
+        view: renderContext.canvas.context.getCurrentTexture().createView(),
         loadOp: "clear",
-        clearValue: { r: 0.0, g: 0.0, b: 0.4, a: 1.0 },
+        clearValue: renderContext.config.renderer.clearColor,
         storeOp: "store",
       },
     ],
   });
 
-  pass.setPipeline(renderContext.pipeline);
-  pass.setVertexBuffer(0, renderContext.vertices.buffer);
+  renderPass.setPipeline(renderContext.pipeline);
+  renderPass.setVertexBuffer(0, renderContext.vertices.buffer);
 
-  pass.setBindGroup(0, bindGroup);
+  renderPass.setBindGroup(0, bindGroup);
 
-  pass.draw(renderContext.vertices.tris.length / 2, numInstances);
-  pass.end();
 
-  // Submit
-  renderContext.device.queue.submit([encoder.finish()]);
+  renderPass.draw(renderContext.vertices.tris.length / 2, numInstances);
+
+
+  renderPass.end();
+
+  renderContext.gpu.device.queue.submit([encoder.finish()]);
 }
 
+function updateState(renderContext) {
+  const buffer = renderContext.inputStateBuffer;
+
+  renderContext.gpu.device.queue.writeBuffer(buffer, 0, renderContext.drawArray);
+}
+
+/* ***************************************************************************************
+ * TICK - REQUIRED FOR FORGE MODULE
+ * ***************************************************************************************/
 export function Tick(renderContext, deltaTime) {
   renderContext.renderStep++;
-  
-  const cellStates = [];
-
-  const cellStateArray = new Uint32Array(renderContext.gridWidth * renderContext.gridHeight);
-
-  for (let i = 0; i < cellStateArray.length; i += 3) {
-    cellStateArray[i] = 1;
-  }
-
-  cellStates.push(CreateStorageBuffer(renderContext, cellStateArray));
-
-  for (let i = 0; i < cellStateArray.length; i += 3) {
-    cellStateArray[i] = i % 2;
-  }
-
-  cellStates.push(CreateStorageBuffer(renderContext, cellStateArray));
-
-  const inputStateArray = new Uint32Array(renderContext.gridWidth * renderContext.gridHeight);
-  if (renderContext.drawArray) {
-    inputStateArray.set(renderContext.drawArray);
-  }
-  const inputState = CreateStorageBuffer(renderContext, inputStateArray);
-
-  // console.log("R: ", renderContext.gridWidth, renderContext.gridHeight);
-  
-  const grid = CreateGridBuffer(renderContext, renderContext.gridWidth, renderContext.gridHeight);
-  // const cellState = CreateStorageBuffer(renderContext);
-
-  const bindGroups = [
-    CreateBindGroup(renderContext, grid, cellStates[0], inputState, cellStates[1]),
-    CreateBindGroup(renderContext, grid, cellStates[1], inputState, cellStates[0]),
-  ];
-
-  renderContext.bindGroups = bindGroups;
-
-  Render(renderContext, renderContext.gridWidth * renderContext.gridHeight, bindGroups[renderContext.renderStep % 2]);
+  updateState(renderContext);
+  Render(renderContext, renderContext.canvas.gridWidth * renderContext.canvas.gridHeight, renderContext.bindGroups[renderContext.renderStep % 2]);
 }

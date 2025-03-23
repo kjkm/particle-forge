@@ -1,3 +1,5 @@
+import { max } from "three/examples/jsm/nodes/Nodes.js";
+
 const Input = {
   mouse: {
     clientX: -1,
@@ -19,6 +21,9 @@ const state = {
   },
   cellSize: 0,
   initialized: false,
+  drawBuffer: [],
+  decayCounter: 0,
+  alertIssued: false,
 };
 
 function deepProxy(target) {
@@ -52,12 +57,41 @@ function clamp(value, min, max) {
   return result;
 }
 
+function getPositionsWithinRadius(center, radius) {
+  const positions = [];
+  const { gridWidth, gridHeight } = state.window;
+  // Calculate bounds; ensure we stay within grid limits.
+  const startX = Math.max(center.x - radius, 0);
+  const endX = Math.min(center.x + radius, gridWidth - 1);
+  const startY = Math.max(center.y - radius, 0);
+  const endY = Math.min(center.y + radius, gridHeight - 1);
+
+  for (let y = startY; y <= endY; y++) {
+    for (let x = startX; x <= endX; x++) {
+      // Use Euclidean distance.
+      const dx = x - center.x;
+      const dy = y - center.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= radius) {
+        positions.push({ x, y });
+      }
+    }
+  }
+
+  return positions;
+}
+
 function draw(event) {
   if (Input.mouse.isDown) {
     const x = clamp(Input.mouse.gridX, 0, state.window.gridWidth - 1);
     const y = clamp(Input.mouse.gridY, 0, state.window.gridHeight - 1);
     // console.log("Drawing at", x, y);
-    state.drawArray[y * state.window.gridWidth + x] = 1;
+    // state.drawArray[y * state.window.gridWidth + x] = 1;
+    const radius = state.config.input.brushSize;
+    const positions = getPositionsWithinRadius({ x, y }, radius);
+    for (const { x, y } of positions) {
+      state.drawBuffer.push({ x, y });
+    }
+    // state.drawBuffer.push({ x, y });
   }
 }
 
@@ -106,9 +140,16 @@ export function Init(config) {
   state.proxy = deepProxy(Input);
   state.initialized = true;
   state.cellSize = config.core.grid.cellSize;
+  Input.tickRate = config.input.tickRate;
 
   updateOnResize();
-  window.addEventListener("resize", updateOnResize);
+  window.addEventListener("resize", () => {
+    updateOnResize();
+    if (!state.alertIssued) {
+      alert("Window resizing not yet supported by input module. Please refresh the page.");
+      state.alertIssued = true;
+    }    
+  });
 
   document.addEventListener("mousedown", toggleMouseDown);
   document.addEventListener("mousedown", draw);
@@ -117,16 +158,20 @@ export function Init(config) {
   document.addEventListener("mouseup", toggleMouseDown);
 
   return state.proxy;
-}
+} 
 
 export function Tick(context, deltaTime) {
-  // console.log(state.window.gridWidth, state.window.gridHeight);
-  // console.log("Input tick");
-  // console.log(Input.mouse);
-  // console.log(state.drawArray);
-  // PrintDrawArray(state.drawArray);
-  // context.drawArray = state.drawArray;
-  // state.drawArray = new Uint32Array(state.window.gridWidth * state.window.gridHeight);
-  // console.log("Cleared draw array");
-  // console.log(state
+  const decayRate = state.config.input.decay * Math.PI * state.config.input.brushSize ^ 2;
+  state.drawArray.fill(0);
+
+  for (const { x, y } of state.drawBuffer) {
+    const index = y * state.window.gridWidth + x;
+    state.drawArray[index] = 1;
+  }
+  
+  while (state.drawBuffer.length > 0 && state.decayCounter < decayRate) {
+    state.drawBuffer.shift();
+    state.decayCounter++;
+  }
+  state.decayCounter = 0;
 }
