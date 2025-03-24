@@ -5,7 +5,7 @@ import input from "./input.config.json" assert { type: "json" };
 
 function deepFreeze(obj) {
   if (obj && typeof obj === "object") {
-    Object.keys(obj).forEach(key => {
+    Object.keys(obj).forEach((key) => {
       deepFreeze(obj[key]);
     });
   }

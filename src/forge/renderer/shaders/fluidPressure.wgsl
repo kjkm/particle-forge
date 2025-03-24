@@ -35,10 +35,7 @@ fn computeMain(@builtin(global_invocation_id) cell: vec3u) {
     let current = pressureIn[i];
     let previous = pressureOut[i];
 
-    // Wave equation with reflection handling
     var newPressure: f32 = (2.0 * current - previous) + (WAVE_SPEED * (avgNeighbors - current));
-
-    // Apply damping to simulate energy loss
     newPressure *= DAMPING;
 
     pressureOut[i] = newPressure;

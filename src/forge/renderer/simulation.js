@@ -16,10 +16,10 @@ export function AddSimulationPipeline(renderContext, config) {
     label: "Simulation Pipeline",
     layout: renderContext.layouts.pipelineLayout,
     compute: {
-        module: simulationShaderModule,
-        entryPoint: "computeMain",
-    }
-  })
+      module: simulationShaderModule,
+      entryPoint: "computeMain",
+    },
+  });
   renderContext.simulationPipeline = simulationPipeline;
 
   return renderContext;

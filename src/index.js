@@ -1,17 +1,11 @@
 import * as Forge from "./forge/forge.js";
 
-
-
 const config = Forge.Config.Init();
 
 const renderContext = await Forge.Renderer.Init(config);
 const input = Forge.Input.Init(config);
 
 renderContext.drawArray = Forge.Input.GetDrawArray();
-
-// setInterval(() => {
-//   Forge.Input.PrintDrawArray(renderContext.drawArray);
-// }, 1000);
 
 const square = Forge.Geometry.Square(config.core.grid.cellRatio);
 Forge.Renderer.AddVertices(renderContext, square);
