@@ -41,9 +41,9 @@ struct FragInput {
 fn fragmentMain(input: FragInput) -> @location(0) vec4f {
     let state = clamp(input.state, 0.0, 1.0); 
 
-    if (state <= 0.01) {
-        return vec4f(0.0, 0.0, 0.0, 1.0); 
-    }
+    // if (state <= 0.01) {
+    //     return vec4f(0.0, 0.0, 0.0, 1.0); 
+    // }
 
     let shiftedState = pow(state, 0.85);
 
