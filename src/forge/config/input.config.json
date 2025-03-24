@@ -1,5 +1,5 @@
 {
-    "tickRate": 60,
-    "decay": 20,
-    "brushSize": 2
+    "tickRate": 30,
+    "decay": 50,
+    "brushSize": 1
 }

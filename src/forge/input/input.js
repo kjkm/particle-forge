@@ -60,7 +60,6 @@ function clamp(value, min, max) {
 function getPositionsWithinRadius(center, radius) {
   const positions = [];
   const { gridWidth, gridHeight } = state.window;
-  // Calculate bounds; ensure we stay within grid limits.
   const startX = Math.max(center.x - radius, 0);
   const endX = Math.min(center.x + radius, gridWidth - 1);
   const startY = Math.max(center.y - radius, 0);
@@ -68,7 +67,6 @@ function getPositionsWithinRadius(center, radius) {
 
   for (let y = startY; y <= endY; y++) {
     for (let x = startX; x <= endX; x++) {
-      // Use Euclidean distance.
       const dx = x - center.x;
       const dy = y - center.y;
       if (Math.sqrt(dx * dx + dy * dy) <= radius) {
@@ -146,9 +144,11 @@ export function Init(config) {
   window.addEventListener("resize", () => {
     updateOnResize();
     if (!state.alertIssued) {
-      alert("Window resizing not yet supported by input module. Please refresh the page.");
+      alert(
+        "Window resizing not yet supported by input module. Please refresh the page."
+      );
       state.alertIssued = true;
-    }    
+    }
   });
 
   document.addEventListener("mousedown", toggleMouseDown);
@@ -158,17 +158,18 @@ export function Init(config) {
   document.addEventListener("mouseup", toggleMouseDown);
 
   return state.proxy;
-} 
+}
 
 export function Tick(context, deltaTime) {
-  const decayRate = state.config.input.decay * Math.PI * state.config.input.brushSize ^ 2;
+  const decayRate =
+    (state.config.input.decay * Math.PI * state.config.input.brushSize) ^ 2;
   state.drawArray.fill(0);
 
   for (const { x, y } of state.drawBuffer) {
     const index = y * state.window.gridWidth + x;
     state.drawArray[index] = 1;
   }
-  
+
   while (state.drawBuffer.length > 0 && state.decayCounter < decayRate) {
     state.drawBuffer.shift();
     state.decayCounter++;

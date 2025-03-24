@@ -1,7 +1,8 @@
 import gameOfLife from "./shaders/gameOfLife.wgsl?raw";
+import fluidPressure from "./shaders/fluidPressure.wgsl?raw";
 
 export function AddSimulationPipeline(renderContext, config) {
-  const processedShaderCode = gameOfLife.replace(
+  const processedShaderCode = fluidPressure.replace(
     /\$\{WORKGROUP_SIZE\}/g,
     config.simulation.workgroupSize
   );

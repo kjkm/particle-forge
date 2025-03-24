@@ -1,8 +1,8 @@
 import gridShaderCode from "./shaders/gridShader.wgsl?raw";
+import blurShaderCode from "./shaders/blurShader.wgsl?raw";
 import Grid from "./grid";
 import { Input } from "../forge.js";
 import { AddSimulationPipeline } from "./simulation";
-
 
 /* ***************************************************************************************
  * FETCH WEBGPU
@@ -20,7 +20,7 @@ async function fetchWebGPU(renderContext) {
   }
 
   gpu.device = await gpu.adapter.requestDevice();
-  
+
   renderContext.gpu = gpu;
   return renderContext;
 }
@@ -38,7 +38,7 @@ function fetchCanvas(renderContext) {
     device: renderContext.gpu.device,
     format: canvas.canvasFormat,
   });
-  
+
   updateCanvas(renderContext);
 
   window.addEventListener("resize", () => {
@@ -59,8 +59,12 @@ function updateCanvas(renderContext) {
   canvas.right = canvas.rect.right;
   canvas.x = canvas.rect.x;
   canvas.y = canvas.rect.y;
-  canvas.gridWidth = Math.floor(canvas.width / renderContext.config.core.grid.cellSize);
-  canvas.gridHeight = Math.floor(canvas.height / renderContext.config.core.grid.cellSize);
+  canvas.gridWidth = Math.floor(
+    canvas.width / renderContext.config.core.grid.cellSize
+  );
+  canvas.gridHeight = Math.floor(
+    canvas.height / renderContext.config.core.grid.cellSize
+  );
 
   return renderContext;
 }
@@ -83,25 +87,28 @@ function createBindGroupLayout(renderContext) {
     entries: [
       {
         binding: 0,
-        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
-        buffer: {}
+        visibility:
+          GPUShaderStage.VERTEX |
+          GPUShaderStage.FRAGMENT |
+          GPUShaderStage.COMPUTE,
+        buffer: {},
       },
       {
         binding: 1,
         visibility: GPUShaderStage.VERTEX | GPUShaderStage.COMPUTE,
-        buffer: { type: "read-only-storage" }
+        buffer: { type: "read-only-storage" },
       },
       {
         binding: 2,
         visibility: GPUShaderStage.VERTEX | GPUShaderStage.COMPUTE,
-        buffer: { type: "read-only-storage" }
+        buffer: { type: "read-only-storage" },
       },
       {
         binding: 3,
         visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "storage" }
-      }
-    ]
+        buffer: { type: "storage" },
+      },
+    ],
   });
 
   return bindGroupLayout;
@@ -166,6 +173,53 @@ export function CreatePipeline(renderContext) {
   return pipeline;
 }
 
+async function createBlurPipeline(renderContext) {
+  const device = renderContext.gpu.device;
+
+  const blurShaderModule = device.createShaderModule({
+    code: blurShaderCode,
+  });
+
+  const blurBindGroupLayout = device.createBindGroupLayout({
+    entries: [
+      {
+        // Texture binding
+        binding: 0,
+        visibility: GPUShaderStage.FRAGMENT,
+        texture: { sampleType: "float" },
+      },
+      {
+        // Sampler binding
+        binding: 1,
+        visibility: GPUShaderStage.FRAGMENT,
+        sampler: { type: "filtering" },
+      },
+    ],
+  });
+
+  const pipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [blurBindGroupLayout],
+  });
+
+  const blurPipeline = device.createRenderPipeline({
+    layout: pipelineLayout,
+    vertex: {
+      module: blurShaderModule,
+      entryPoint: "vertexMain",
+    },
+    fragment: {
+      module: blurShaderModule,
+      entryPoint: "fragmentMain",
+      targets: [{ format: renderContext.canvas.canvasFormat }],
+    },
+    primitive: {
+      topology: "triangle-list",
+    },
+  });
+
+  return { blurPipeline, blurBindGroupLayout };
+}
+
 /* ***************************************************************************************
  * CREATE VERTEX BUFFER
  * ***************************************************************************************/
@@ -206,7 +260,7 @@ export function CreateUniformBuffer(renderContext, width, height) {
   return uniformBuffer;
 }
 
-export function createStorageBuffer(renderContext, stateArray, bufferLabel) {
+function createStorageBuffer(renderContext, stateArray, bufferLabel) {
   console.log("stateArray type:", stateArray.constructor.name);
   const stateStorage = renderContext.gpu.device.createBuffer({
     label: bufferLabel || "State Storage",
@@ -215,7 +269,7 @@ export function createStorageBuffer(renderContext, stateArray, bufferLabel) {
   });
 
   renderContext.gpu.device.queue.writeBuffer(stateStorage, 0, stateArray);
-  
+
   return stateStorage;
 }
 
@@ -234,15 +288,54 @@ export function CreateBindGroup(renderContext, resources) {
   return bindGroup;
 }
 
+function createBlurBindGroup(renderContext, renderTarget, blurBindGroupLayout) {
+  const device = renderContext.gpu.device;
+
+  const blurSampler = device.createSampler({
+    magFilter: "linear",
+    minFilter: "linear",
+  });
+
+  const blurBindGroup = device.createBindGroup({
+    layout: blurBindGroupLayout,
+    entries: [
+      {
+        binding: 0,
+        resource: renderTarget,
+      },
+      {
+        binding: 1,
+        resource: blurSampler,
+      },
+    ],
+  });
+
+  return blurBindGroup;
+}
+
+function createRenderTarget(renderContext) {
+  const renderTexture = renderContext.gpu.device.createTexture({
+    size: {
+      width: renderContext.canvas.width,
+      height: renderContext.canvas.height,
+    },
+    format: renderContext.canvas.canvasFormat,
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  });
+
+  const renderTarget = renderTexture.createView();
+  return renderTarget;
+}
+
 /* ***************************************************************************************
  * INIT RENDERER
  * ***************************************************************************************/
 export async function Init(config) {
   const rend = {
-    renderStep: 0
+    renderStep: 0,
   };
   rend.config = config;
-  
+
   await fetchWebGPU(rend);
   fetchCanvas(rend);
 
@@ -252,7 +345,11 @@ export async function Init(config) {
   AddSimulationPipeline(rend, config);
 
   // FULL SETUP
-  rend.uniformBuffer = CreateUniformBuffer(rend, rend.canvas.gridWidth, rend.canvas.gridHeight);
+  rend.uniformBuffer = CreateUniformBuffer(
+    rend,
+    rend.canvas.gridWidth,
+    rend.canvas.gridHeight
+  );
 
   rend.stateGrid = new Grid(rend.canvas.gridWidth, rend.canvas.gridHeight);
   // rend.stateGrid.Randomize();
@@ -260,7 +357,7 @@ export async function Init(config) {
 
   rend.cellStateBuffers = [
     createStorageBuffer(rend, rend.cellStateArray, "Cell State A"),
-    createStorageBuffer(rend, rend.cellStateArray, "Cell State B")
+    createStorageBuffer(rend, rend.cellStateArray, "Cell State B"),
   ];
 
   rend.inputGrid = new Grid(rend.canvas.gridWidth, rend.canvas.gridHeight);
@@ -269,15 +366,40 @@ export async function Init(config) {
   }
 
   rend.inputStateArray = rend.inputGrid.GetArray();
-  rend.inputStateBuffer = createStorageBuffer(rend, rend.inputStateArray, "Input State");
+  rend.inputStateBuffer = createStorageBuffer(
+    rend,
+    rend.inputStateArray,
+    "Input State"
+  );
+
+  // Post Processing
+  rend.renderTarget = createRenderTarget(rend);
+  const { blurPipeline, blurBindGroupLayout } = await createBlurPipeline(rend);
+  rend.postPipeline = blurPipeline;
+  rend.blurBindGroupLayout = blurBindGroupLayout;
+  rend.postBindGroup = createBlurBindGroup(
+    rend,
+    rend.renderTarget,
+    rend.blurBindGroupLayout
+  );
 
   return rend;
 }
 
 export function PreRender(rend) {
   const bindGroups = [
-    CreateBindGroup(rend, [rend.uniformBuffer, rend.cellStateBuffers[0], rend.inputStateBuffer, rend.cellStateBuffers[1]]),
-    CreateBindGroup(rend, [rend.uniformBuffer, rend.cellStateBuffers[1], rend.inputStateBuffer, rend.cellStateBuffers[0]])
+    CreateBindGroup(rend, [
+      rend.uniformBuffer,
+      rend.cellStateBuffers[0],
+      rend.inputStateBuffer,
+      rend.cellStateBuffers[1],
+    ]),
+    CreateBindGroup(rend, [
+      rend.uniformBuffer,
+      rend.cellStateBuffers[1],
+      rend.inputStateBuffer,
+      rend.cellStateBuffers[0],
+    ]),
   ];
 
   rend.bindGroups = bindGroups;
@@ -293,10 +415,17 @@ export function Render(renderContext, numInstances, bindGroup) {
   const computePass = encoder.beginComputePass();
 
   computePass.setPipeline(renderContext.simulationPipeline);
-  computePass.setBindGroup(0, renderContext.bindGroups[renderContext.renderStep % 2]);
+  computePass.setBindGroup(
+    0,
+    renderContext.bindGroups[renderContext.renderStep % 2]
+  );
   const workgroupSize = renderContext.config.simulation.workgroupSize;
-  const workgroupWidth = Math.ceil(renderContext.canvas.gridWidth / workgroupSize);
-  const workgroupHeight = Math.ceil(renderContext.canvas.gridHeight / workgroupSize);
+  const workgroupWidth = Math.ceil(
+    renderContext.canvas.gridWidth / workgroupSize
+  );
+  const workgroupHeight = Math.ceil(
+    renderContext.canvas.gridHeight / workgroupSize
+  );
   computePass.dispatchWorkgroups(workgroupWidth, workgroupHeight);
   computePass.end();
 
@@ -304,7 +433,8 @@ export function Render(renderContext, numInstances, bindGroup) {
   const renderPass = encoder.beginRenderPass({
     colorAttachments: [
       {
-        view: renderContext.canvas.context.getCurrentTexture().createView(),
+        // view: renderContext.canvas.context.getCurrentTexture().createView(),
+        view: renderContext.renderTarget,
         loadOp: "clear",
         clearValue: renderContext.config.renderer.clearColor,
         storeOp: "store",
@@ -314,14 +444,25 @@ export function Render(renderContext, numInstances, bindGroup) {
 
   renderPass.setPipeline(renderContext.pipeline);
   renderPass.setVertexBuffer(0, renderContext.vertices.buffer);
-
   renderPass.setBindGroup(0, bindGroup);
-
-
   renderPass.draw(renderContext.vertices.tris.length / 2, numInstances);
-
-
   renderPass.end();
+
+  // Post processing
+  const postPass = encoder.beginRenderPass({
+    colorAttachments: [
+      {
+        view: renderContext.canvas.context.getCurrentTexture().createView(),
+        loadOp: "load",
+        clearValue: renderContext.config.renderer.clearColor,
+        storeOp: "store",
+      },
+    ],
+  });
+  postPass.setPipeline(renderContext.postPipeline);
+  postPass.setBindGroup(0, renderContext.postBindGroup);
+  postPass.draw(6);
+  postPass.end();
 
   renderContext.gpu.device.queue.submit([encoder.finish()]);
 }
@@ -329,7 +470,11 @@ export function Render(renderContext, numInstances, bindGroup) {
 function updateState(renderContext) {
   const buffer = renderContext.inputStateBuffer;
 
-  renderContext.gpu.device.queue.writeBuffer(buffer, 0, renderContext.drawArray);
+  renderContext.gpu.device.queue.writeBuffer(
+    buffer,
+    0,
+    renderContext.drawArray
+  );
 }
 
 /* ***************************************************************************************
@@ -338,5 +483,9 @@ function updateState(renderContext) {
 export function Tick(renderContext, deltaTime) {
   renderContext.renderStep++;
   updateState(renderContext);
-  Render(renderContext, renderContext.canvas.gridWidth * renderContext.canvas.gridHeight, renderContext.bindGroups[renderContext.renderStep % 2]);
+  Render(
+    renderContext,
+    renderContext.canvas.gridWidth * renderContext.canvas.gridHeight,
+    renderContext.bindGroups[renderContext.renderStep % 2]
+  );
 }
